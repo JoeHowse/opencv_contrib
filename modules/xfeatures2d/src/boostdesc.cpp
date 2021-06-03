@@ -65,6 +65,8 @@ namespace cv
 namespace xfeatures2d
 {
 
+#ifdef OPENCV_XFEATURES2D_HAS_BOOST_DATA
+
 /*
  !BoostDesc implementation
  */
@@ -138,7 +140,7 @@ protected:
     // patch size
     int m_patch_size;
 
-    // orient quantitiy
+    // orient quantity
     int m_orient_q;
 
     // patch scale factor
@@ -364,9 +366,10 @@ static void rectifyPatch( const Mat& image, const KeyPoint& kp,
     }
     else
     {
-      float M_[] = {
-          1.f,  0.f, -1.f * patchSize/2.0f + kp.pt.x,
-          0.f,  1.f, -1.f * patchSize/2.0f + kp.pt.y
+        const float s = scale_factor * (float)kp.size / (float)patchSize;
+        float M_[] = {
+          s,  0.f, -s * patchSize/2.0f + kp.pt.x,
+          0.f,  s, -s * patchSize/2.0f + kp.pt.y
       };
       M = Mat( 2, 3, CV_32FC1, M_ ).clone();
     }
@@ -728,9 +731,16 @@ BoostDesc_Impl::~BoostDesc_Impl()
 {
 }
 
+#endif  // OPENCV_XFEATURES2D_HAS_BOOST_DATA
+
 Ptr<BoostDesc> BoostDesc::create( int desc, bool use_scale_orientation, float scale_factor )
 {
+#ifdef OPENCV_XFEATURES2D_HAS_BOOST_DATA
     return makePtr<BoostDesc_Impl>( desc, use_scale_orientation, scale_factor );
+#else
+    CV_UNUSED(desc); CV_UNUSED(use_scale_orientation); CV_UNUSED(scale_factor);
+    CV_Error(Error::StsNotImplemented, "The OpenCV xfeatures2d binaries is built without downloaded Boost decriptor features: https://github.com/opencv/opencv_contrib/issues/1301");
+#endif
 }
 
 

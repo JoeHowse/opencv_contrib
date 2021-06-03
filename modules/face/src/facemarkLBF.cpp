@@ -115,7 +115,7 @@ public:
 
 protected:
 
-    bool fit( InputArray image, InputArray faces, OutputArrayOfArrays landmarks ) CV_OVERRIDE;//!< from many ROIs
+    bool fit(InputArray image, InputArray faces, OutputArrayOfArrays landmarks) CV_OVERRIDE;
     bool fitImpl( const Mat image, std::vector<Point2f> & landmarks );//!< from a face
 
     bool addTrainingSample(InputArray image, InputArray landmarks) CV_OVERRIDE;
@@ -332,9 +332,9 @@ void FacemarkLBFImpl::training(void* parameters){
         CV_Error(Error::StsBadArg, "Training data is not provided. Consider to add using addTrainingSample() function!");
     }
 
-    if (params.cascade_face.empty() || (params.model_filename.empty() && params.save_model))
+    if (params.model_filename.empty() && params.save_model)
     {
-        CV_Error(Error::StsBadArg, "The parameter cascade_face and model_filename should be set!");
+        CV_Error(Error::StsBadArg, "The parameter model_filename should be set!");
     }
 
     // flip the image and swap the landmark position
@@ -370,14 +370,47 @@ void FacemarkLBFImpl::training(void* parameters){
     isModelTrained = true;
 }
 
-bool FacemarkLBFImpl::fit( InputArray image, InputArray roi, OutputArrayOfArrays  _landmarks )
+/**
+ * @brief Copy the contents of a corners vector to an OutputArray, settings its size.
+ */
+static void _copyVector2Output(std::vector< std::vector< Point2f > > &vec, OutputArrayOfArrays out)
 {
-    // FIXIT
-    std::vector<Rect> & faces = *(std::vector<Rect> *)roi.getObj();
+    out.create((int)vec.size(), 1, CV_32FC2);
+
+    if (out.isMatVector()) {
+        for (unsigned int i = 0; i < vec.size(); i++) {
+            out.create(68, 1, CV_32FC2, i);
+            Mat &m = out.getMatRef(i);
+            Mat(Mat(vec[i]).t()).copyTo(m);
+        }
+    }
+    else if (out.isUMatVector()) {
+        for (unsigned int i = 0; i < vec.size(); i++) {
+            out.create(68, 1, CV_32FC2, i);
+            UMat &m = out.getUMatRef(i);
+            Mat(Mat(vec[i]).t()).copyTo(m);
+        }
+    }
+    else if (out.kind() == _OutputArray::STD_VECTOR_VECTOR) {
+        for (unsigned int i = 0; i < vec.size(); i++) {
+            out.create(68, 1, CV_32FC2, i);
+            Mat m = out.getMat(i);
+            Mat(Mat(vec[i]).t()).copyTo(m);
+        }
+    }
+    else {
+        CV_Error(cv::Error::StsNotImplemented,
+            "Only Mat vector, UMat vector, and vector<vector> OutputArrays are currently supported.");
+    }
+}
+
+bool FacemarkLBFImpl::fit(InputArray image, InputArray roi, OutputArrayOfArrays _landmarks)
+{
+    Mat roimat = roi.getMat();
+    std::vector<Rect> faces = roimat.reshape(4, roimat.rows);
     if (faces.empty()) return false;
 
-    std::vector<std::vector<Point2f> > & landmarks =
-        *(std::vector<std::vector<Point2f> >*) _landmarks.getObj();
+    std::vector<std::vector<Point2f> > landmarks;
 
     landmarks.resize(faces.size());
 
@@ -385,7 +418,7 @@ bool FacemarkLBFImpl::fit( InputArray image, InputArray roi, OutputArrayOfArrays
         params.detectROI = faces[i];
         fitImpl(image.getMat(), landmarks[i]);
     }
-
+    _copyVector2Output(landmarks, _landmarks);
     return true;
 }
 
@@ -502,13 +535,14 @@ Rect FacemarkLBFImpl::getBBox(Mat &img, const Mat_<double> shape) {
 void FacemarkLBFImpl::prepareTrainingData(Mat img, std::vector<Point2f> facePoints,
     std::vector<Mat> & cropped, std::vector<Mat> & shapes, std::vector<BBox> &boxes)
 {
+    Mat shape;
+    Mat _shape = Mat(facePoints).reshape(1);
+    Rect box = getBBox(img, _shape);
+
     if(img.channels()>1){
         cvtColor(img,img,COLOR_BGR2GRAY);
     }
 
-    Mat shape;
-    Mat _shape = Mat(facePoints).reshape(1);
-    Rect box = getBBox(img, _shape);
     if(box.x != -1){
         _shape.convertTo(shape, CV_64FC1);
         Mat sx = shape.col(0);
